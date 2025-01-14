@@ -11,9 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/containerd/containerd/log"
+	"github.com/containerd/log"
 	"github.com/docker/distribution/registry/client/transport"
 	"github.com/docker/go-connections/tlsconfig"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // HostCertsDir returns the config directory for a specific host.
@@ -113,54 +114,9 @@ func Headers(userAgent string, metaHeaders http.Header) []transport.RequestModif
 	return modifiers
 }
 
-// httpClient returns an HTTP client structure which uses the given transport
-// and contains the necessary headers for redirected requests
-func httpClient(transport http.RoundTripper) *http.Client {
-	return &http.Client{
-		Transport:     transport,
-		CheckRedirect: addRequiredHeadersToRedirectedRequests,
-	}
-}
-
-func trustedLocation(req *http.Request) bool {
-	var (
-		trusteds = []string{"docker.com", "docker.io"}
-		hostname = strings.SplitN(req.Host, ":", 2)[0]
-	)
-	if req.URL.Scheme != "https" {
-		return false
-	}
-
-	for _, trusted := range trusteds {
-		if hostname == trusted || strings.HasSuffix(hostname, "."+trusted) {
-			return true
-		}
-	}
-	return false
-}
-
-// addRequiredHeadersToRedirectedRequests adds the necessary redirection headers
-// for redirected requests
-func addRequiredHeadersToRedirectedRequests(req *http.Request, via []*http.Request) error {
-	if len(via) != 0 && via[0] != nil {
-		if trustedLocation(req) && trustedLocation(via[0]) {
-			req.Header = via[0].Header
-			return nil
-		}
-		for k, v := range via[0].Header {
-			if k != "Authorization" {
-				for _, vv := range v {
-					req.Header.Add(k, vv)
-				}
-			}
-		}
-	}
-	return nil
-}
-
 // newTransport returns a new HTTP transport. If tlsConfig is nil, it uses the
 // default TLS configuration.
-func newTransport(tlsConfig *tls.Config) *http.Transport {
+func newTransport(tlsConfig *tls.Config) http.RoundTripper {
 	if tlsConfig == nil {
 		tlsConfig = tlsconfig.ServerDefault()
 	}
@@ -170,12 +126,14 @@ func newTransport(tlsConfig *tls.Config) *http.Transport {
 		KeepAlive: 30 * time.Second,
 	}
 
-	return &http.Transport{
-		Proxy:               http.ProxyFromEnvironment,
-		DialContext:         direct.DialContext,
-		TLSHandshakeTimeout: 10 * time.Second,
-		TLSClientConfig:     tlsConfig,
-		// TODO(dmcgowan): Call close idle connections when complete and use keep alive
-		DisableKeepAlives: true,
-	}
+	return otelhttp.NewTransport(
+		&http.Transport{
+			Proxy:               http.ProxyFromEnvironment,
+			DialContext:         direct.DialContext,
+			TLSHandshakeTimeout: 10 * time.Second,
+			TLSClientConfig:     tlsConfig,
+			// TODO(dmcgowan): Call close idle connections when complete and use keep alive
+			DisableKeepAlives: true,
+		},
+	)
 }

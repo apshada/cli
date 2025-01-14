@@ -54,7 +54,7 @@ func setupCommonRootCommand(rootCmd *cobra.Command) (*cliflags.ClientOptions, *c
 	rootCmd.SetHelpCommand(helpCommand)
 
 	rootCmd.PersistentFlags().BoolP("help", "h", false, "Print usage")
-	rootCmd.PersistentFlags().MarkShorthandDeprecated("help", "please use --help")
+	rootCmd.PersistentFlags().MarkShorthandDeprecated("help", "use --help")
 	rootCmd.PersistentFlags().Lookup("help").Hidden = true
 
 	rootCmd.Annotations = map[string]string{
@@ -92,12 +92,8 @@ func FlagErrorFunc(cmd *cobra.Command, err error) error {
 		return nil
 	}
 
-	usage := ""
-	if cmd.HasSubCommands() {
-		usage = "\n\n" + cmd.UsageString()
-	}
 	return StatusError{
-		Status:     fmt.Sprintf("%s\nSee '%s --help'.%s", err, cmd.CommandPath(), usage),
+		Status:     fmt.Sprintf("%s\n\nUsage:  %s\n\nRun '%s --help' for more information", err, cmd.UseLine(), cmd.CommandPath()),
 		StatusCode: 125,
 	}
 }
@@ -176,7 +172,7 @@ func (tcmd *TopLevelCommand) HandleGlobalFlags() (*cobra.Command, []string, erro
 }
 
 // Initialize finalises global option parsing and initializes the docker client.
-func (tcmd *TopLevelCommand) Initialize(ops ...command.InitializeOpt) error {
+func (tcmd *TopLevelCommand) Initialize(ops ...command.CLIOption) error {
 	tcmd.opts.SetDefaultOptions(tcmd.flags)
 	return tcmd.dockerCli.Initialize(tcmd.opts, ops...)
 }
@@ -470,7 +466,7 @@ Common Commands:
 Management Commands:
 
 {{- range managementSubCommands . }}
-  {{rpad (decoratedName .) (add .NamePadding 1)}}{{.Short}}{{ if isPlugin .}} {{vendorAndVersion .}}{{ end}}
+  {{rpad (decoratedName .) (add .NamePadding 1)}}{{.Short}}
 {{- end}}
 
 {{- end}}
@@ -479,7 +475,7 @@ Management Commands:
 Swarm Commands:
 
 {{- range orchestratorSubCommands . }}
-  {{rpad (decoratedName .) (add .NamePadding 1)}}{{.Short}}{{ if isPlugin .}} {{vendorAndVersion .}}{{ end}}
+  {{rpad (decoratedName .) (add .NamePadding 1)}}{{.Short}}
 {{- end}}
 
 {{- end}}
